@@ -17,7 +17,6 @@ path_code= my_path+'2.Code/'
 path_output= my_path+'3.Output/'
 
 import os
-
 #%% Directories
 
 print('The previous working directory is: {}'.format(os.getcwd()))
@@ -35,13 +34,47 @@ from functions import from_excel_to_pandas
 
 #%% Defining functions
 
+# Class to print solutions
+
+class ShiftsPartialSolutionPrinter(cp_model.CpSolverSolutionCallback):
+        """Print intermediate solutions."""
+    
+        def __init__(self, shifts, num_anlagen, num_all_workers, num_days, num_shifts, sols):
+            cp_model.CpSolverSolutionCallback.__init__(self)
+            self.shifts= shifts
+            self._num_anlagen= num_anlagen
+            self._num_all_workers = num_all_workers
+            self._num_days = num_days
+            self._num_shifts = num_shifts
+            self._solutions = set(sols)
+            self._solution_count = 0
+    
+        def on_solution_callback(self):
+            if self._solution_count in self._solutions:
+                print('Solution %i' % self._solution_count)
+                for d in range(self._num_days):
+                    print('Day %i' % d)
+                    for n in range(self._num_all_workers):
+                        is_working = False
+                        for a in range(self._num_anlagen):
+                            for s in range(self._num_shifts):
+                                if self.Value(self._shifts[(n, d, a, s)]):
+                                    is_working = True
+                                    print('  Worker %i works shift %i in line %i ' % (n, s, a))
+                                if not is_working:
+                                    print('  Worker {} does not work '.format(n))
+                print()
+            self._solution_count += 1
+    
+        def solution_count(self):
+            return self._solution_count
+
 def solver(num_anlagen, num_supervisors, num_workers, preferences_file):
     
     # This program tries to find an optimal assignment of workers to shifts
     # (3 shifts per day, for 6 days), subject to some constraints (see below).
     # Each worker can request to be assigned to specific shifts.
     # The optimal assignment maximizes the number of fulfilled shift requests.
-
     
     preferences= from_excel_to_pandas(path_input, preferences_file, "Shift_preference", {})
     preferences= preferences.set_index('worker', inplace= False)
@@ -79,7 +112,8 @@ def solver(num_anlagen, num_supervisors, num_workers, preferences_file):
             else:
                 for d in all_days:
                     for s in all_shifts:
-                        if (a, d, s) not in [(0, 5, 1), (0, 5, 2), (1, 5, 0), (1, 5, 1), (1, 5, 2), (2, 5, 0), (2, 5, 1), (2, 5, 2)]:
+                        if (a, d, s) not in [(0, 5, 1), (0, 5, 2), (1, 5, 0), \
+                           (1, 5, 1), (1, 5, 2), (2, 5, 0), (2, 5, 1), (2, 5, 2)]: #some shifts are not worked at some production lines
                             all_valid.append([n, d, a, s])
                         else:
                             pass
@@ -184,7 +218,8 @@ def solver(num_anlagen, num_supervisors, num_workers, preferences_file):
     # Calling maximizatin function
     
     model.Maximize(
-        sum(shift_requests[element[0]][element[1]][element[2]][element[3]] * shifts[(element[0], element[1], element[2], element[3])] for element in all_valid))
+        sum(shift_requests[element[0]][element[1]][element[2]][element[3]] * \
+            shifts[(element[0], element[1], element[2], element[3])] for element in all_valid))
     
     solver= cp_model.CpSolver()
     solver.parameters.max_time_in_seconds = 100.0
@@ -192,25 +227,32 @@ def solver(num_anlagen, num_supervisors, num_workers, preferences_file):
     status= solver.Solve(model)
     
     if status != 3:
-        print('A solution found:')
-    
-        for element in all_valid:
-            
-            print('Day', element[1])
-            
-            n, d, a, s = element[0], element[1], element[2], element[3]
-            
-            if solver.Value(shifts[(n, d, a, s)]) == 1:
-                if shift_requests[n][d][a][s] == 1:
-                    print('Worker %i works shift %i at line %i (requested).' % (n, s, a))
-                else:
-                    print('Worker %i works shift %i at line %i (not requested).' % (n, s, a))
         
+        print('A solution found:')
+        
+        for a in all_anlagen:
+            print('Production line: %i' % a)
+            for d in all_days:
+                print('Day %i' % d)
+                for s in all_shifts:
+                    print('Shift: %i' % s)
+                    for n in all_workers:
+                        
+                        try:
+                                                        
+                            if shift_requests[n][d][a][s] == 1:
+                                print('Worker %i works shift %i at line %i (requested).' % (n, s, a))
+                            else:
+                                print('Worker %i works shift %i at line %i (not requested).' % (n, s, a))
+                        
+                        except:
+                            pass
+                        
+                        
         print('Statistics')
         print('  - conflicts       : %i' % solver.NumConflicts())
         print('  - branches        : %i' % solver.NumBranches())
         print('  - wall time       : %f s' % solver.WallTime())
-        
         
         # List with all the shift information
         shift_model= []
@@ -245,7 +287,12 @@ def solver(num_anlagen, num_supervisors, num_workers, preferences_file):
         opc_s= [0, num_supervisors]
         opc_e= [num_supervisors, num_supervisors+num_workers]
         
+        print('')
+        print('Verifying total number of supervisors and workers in each shift')
+        print('')
+        
         for i in range(len(opc_s)):
+            print(string[i])
         
             count= 0
             for a in all_anlagen:
@@ -260,13 +307,17 @@ def solver(num_anlagen, num_supervisors, num_workers, preferences_file):
                             count+= 1
                             print('Problem a%i s%i' % (a, s))
             
-            print(string[i])
-            print('Number of problems equals %i' % count)
+            print('Number of problems equals to %i' % count)
         
         # Max number of shifts each worker can have
         
+        print('')
+        print('Verifying total number shifts/day each supervisor/worker might have')
+        print('')
+        
         count= 0
         for n in all_workers:
+            
             for d in all_days:
                 
                 result= sum([solver.Value(shifts[(n, d, s, a)]) for s in all_shifts for a in all_anlagen if [n, d, s, a] in all_valid])
@@ -275,15 +326,13 @@ def solver(num_anlagen, num_supervisors, num_workers, preferences_file):
                 else:
                     count+= 1
                     print('Problem at n%i d%i' % (n, d))
-           
-        print('Number of problems equals %i' % count)
-        
+                    
+        print('Total number of conflicts equals to: %i' % count)
+                
     else:
         print('No solution was found, iterate')
     
     return shift_model
-       
-        
         
 #%% Calling the solver
 
@@ -293,5 +342,6 @@ def solver(num_anlagen, num_supervisors, num_workers, preferences_file):
 # 20 Supervisors
 # 20 Workers
 
-shift_model= solver(3, 20, 20, "21042024_shift_preferences.xlsx") 
-shift_model.to_excel(path_output+"DOMPZ_schedule.xlsx")
+shift_result= solver(3, 20, 20, "21042024_shift_preferences.xlsx") 
+shift_result.to_excel(path_output+"DOMPZ_schedule.xlsx")
+
