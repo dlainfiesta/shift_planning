@@ -16,4 +16,4 @@ Constraints: The passing above statements
 
 Packages used: ortools.sat.python / cp_model, pandas and numpy
 
-This code allows the user to schedule shifts for different production lines, where not all workers can operate all lines, let´s you limit the amount of min/max a worker can do each week and assures that workers will rest at least 3 shifts between active shifts and never work two shifts continuosly. 
+This code allows the user to schedule shifts for different production lines, where not all workers can operate all lines, lets you limit the amount of min/max shifts a worker can have during week and assures that workers will rest at least 3 shifts between active shifts and never work two shifts consecutively. 
